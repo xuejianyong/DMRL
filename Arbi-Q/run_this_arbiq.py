@@ -27,7 +27,7 @@ import configparser
 
 
 config = configparser.ConfigParser()
-config.read('app.ini')
+config.read('../configuration.ini')
 
 N_MODULE = config.getint('env','n_modules')
 SIMULATIONS = config.getint('env','simulation')
@@ -67,44 +67,65 @@ direction_dict = {}  # count the number of times the direction appears
 
 np.random.seed(1)
 
+def get_all_locations():
+    all_locations = np.array(list(it.product(x_range, y_range))) * UNIT
+    all_locations = all_locations.tolist()
+    return all_locations
+
 def update():
     print("--- Interaction starts ---")
     start = time.time()
+    filename = "arbiq-task-samejima_modular_reward-m" + str(N_MODULE) + 's' + str(SIMULATIONS) + 't' + str(TRIAL_SAMEJIMA)
     for simulation_i in range(SIMULATIONS):
         step_list_i = []
-        filename = "MMBRL-con-module_i_sigma_m" + str(N_MODULE) + 's' + str(SIMULATIONS) + 't' + str(TRIAL) + 'si2-jj-resp-sigma-15-'
         model = MMBRL(n_modules=N_MODULE, trial=TRIAL, method='softmax')
+        resp_method = 'samejima_modular_reward'
         for trial in range(TRIAL):
             model.watch_list = []
-            # ------------ environment initialization ------------ #
-            agent_original = [0, 0]  # agent_original = all_locations[np.random.randint(0, len(all_locations))]
-            if agent_original in all_locations:
-                all_locations.remove(agent_original)
-            prey_original = all_locations[np.random.randint(0, len(all_locations))]
-            prey_direction = prey_move_directions[np.random.randint(0, 4)]  # prey_direction = 'sw'
-            if prey_direction not in direction_dict.keys():
-                direction_dict[prey_direction] = 1
-            else:
-                direction_dict[prey_direction] += 1
-            env = TextMaze(agent_original, prey_original, prey_direction)
-            # ------------ interaction starts ------------ #
-            observation = env.reset()
+            agent_original = [0, 0]
             step = 0
-            resp_method = 'jj'                                                  # original  error_softmax  samejima_modular_reward  jj
-            while True:
-                action = model.choose_action(str(observation))
-                observation_, reward, done = env.step_new(action)
-                model.learn(str(observation), action, reward, str(observation_), done, resp_method)
-                observation = observation_
-                step += 1
-                if done or (step >= MAX_STEP):
-                    break
+            reward_total = 0
+            value_total = 0.0
+
+            for prey_direction in prey_move_directions:
+                # ------------ environment initialization ------------ #
+                all_locations_i = get_all_locations()
+                if agent_original in all_locations_i:
+                    all_locations_i.remove(agent_original)
+                prey_original = all_locations_i[np.random.randint(0, len(all_locations_i))]
+                env = TextMaze(agent_original, prey_original, prey_direction)
+                # ------------ interaction starts ------------ #
+                observation = env.reset()
+                while True:
+                    action = model.choose_action(str(observation))
+
+                    for module_i in model.modules:
+                        value_total += module_i.responsibility * module_i.state_values[str(observation)]
+
+                    observation_, reward, done = env.step_new(action)
+                    model.learn(str(observation), action, reward, str(observation_), done, resp_method)
+                    observation = observation_
+                    step += 1
+                    reward_total += reward
+                    if done:
+                        agent_original = env.agent_current_position
+                        break
             print('simulation: %d/%d, [trial: %d/%d],  with %d steps.' % (simulation_i, SIMULATIONS, trial, TRIAL, step))
-            step_list_i.append(step)
+            # step_list_i.append(step)
+
+            list_values = []
+            list_values.append(step)
+            list_values.append(reward_total / step)
+            # for module_i in model.modules:
+            #     value_total += max(module_i.state_values.values())
+            list_values.append(value_total / step)
+            step_list_i.append(list_values)
+
         model.mark += model.method+'-'+str(simulation_i)
         step_list[model.mark] = step_list_i
 
         #------------------------ test_backup result ------------------------#
+        """
         print('*-' * 30)
         print(direction_dict)
         observation = str([140, 140])
@@ -118,10 +139,7 @@ def update():
         for module_i in model.modules:
             print(module_i.state_action_state_pro[key])
         # print(model.modules[1].q_table.index)
-
-
-
-
+        """
         # -------------- test_backup function part ----------------#
         """
         step_list_i = []
@@ -152,17 +170,12 @@ def update():
         model.mark += model.method
         step_list[model.mark] = step_list_i
         """
-
         # ---------------------------------   show graphic  ---------------------------------#
         # show_graphic(agent_original, prey_original, prey_direction, model)
 
     # show figures
     print('over')  # end of game
     # plot_step()
-    plot_step_mean(filename)
-    # for module_i in model.modules:
-    #     show_pcolor_values(module_i.state_values)
-
     period = time.time() - start
     if period > 3600:
         hour = period // 3600
@@ -174,10 +187,64 @@ def update():
         second = period - minute * 60
         print('Time in this training:', str(minute) + ' min ' + str(second) + ' seds. ')
 
+    # plot_step_mean(filename)
+    plot_step_multi_mean(filename)
+
+
+    # for module_i in model.modules:
+    #     show_pcolor_values(module_i.state_values)
 
 
     # show_modules()
     # model.show_pcolor_sv()
+
+def plot_step_multi_mean(filename):
+    currentpath = os.getcwd()
+    filepath = os.path.join(currentpath, 'data')
+    if not os.path.isdir(filepath):
+        os.mkdir('data')
+    means = []
+    for model_mark in step_list.keys():
+        step_list_i = step_list[model_mark]
+        means.append(step_list_i)
+    step_list_toal = []
+    reward_list_toal = []
+    value_list_toal = []
+    for s_i in means:
+        step_list_record = []
+        reward_list_record = []
+        value_list_record = []
+        for ele in s_i:
+            step_data = ele[0]
+            reward_data = ele[1]
+            value_data = ele[2]
+            step_list_record.append(step_data)
+            reward_list_record.append(reward_data)
+            value_list_record.append(value_data)
+        step_list_toal.append(step_list_record)
+        reward_list_toal.append(reward_list_record)
+        value_list_toal.append(value_list_record)
+
+    step_mean_value = np.mean(step_list_toal, axis=0)
+    reward_mean_value = np.mean(reward_list_toal, axis=0)
+    value_mean_value = np.mean(value_list_toal, axis=0)
+
+    # print(mean_value)
+    filename += '-' + time.strftime("%Y%m%d-%H%M%S", time.localtime())
+    f = open("./data/" + filename + ".txt", 'w')
+    for mean_step, mean_reward, mean_value in zip(step_mean_value, reward_mean_value, value_mean_value):
+        f.write(str(mean_step) + ','+ str(mean_reward)+ ','+ str(mean_value) + '\n')
+    f.close()
+
+    labelname = os.path.basename(__file__)
+    plt.plot(step_mean_value, label=labelname)
+    plt.plot(reward_mean_value, label=labelname)
+    plt.plot(value_mean_value, label=labelname)
+    plt.xlabel('Number of trial')
+    plt.ylabel('Number of steps in a trial')
+    plt.legend()
+    plt.show()
+
 
 def get_max_key(sas_dict):
     key_max = ''
@@ -331,6 +398,10 @@ def plot_step():
     plt.show()
 
 def plot_step_mean(filename):
+    currentpath = os.getcwd()
+    filepath = os.path.join(currentpath, 'data')
+    if not os.path.isdir(filepath):
+        os.mkdir('data')
     means = []
     for model_mark in step_list.keys():
         step_list_i = step_list[model_mark]

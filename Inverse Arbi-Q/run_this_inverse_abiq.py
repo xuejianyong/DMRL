@@ -25,7 +25,7 @@ import time
 import configparser
 
 config = configparser.ConfigParser()
-config.read('../../app.ini')
+config.read('../configuration.ini')
 
 N_MODULE = config.getint('env','n_modules')
 SIMULATIONS = config.getint('env','simulation')

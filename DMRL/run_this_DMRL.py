@@ -20,7 +20,7 @@ import itertools as it
 import pandas as pd
 import math
 # from model_MMBRL import MMBRL, Module
-from model_conc_jj_task_samejima import MMBRL, Module
+from model_DMRL import MMBRL, Module
 import time
 import os
 
@@ -28,7 +28,7 @@ import configparser
 # from interaction import Interaction
 
 config = configparser.ConfigParser()
-config.read('../../app.ini')
+config.read('../configuration.ini')
 
 N_MODULE = config.getint('env','n_modules')
 # SIMULATIONS = config.getint('env','simulation_test')

@@ -9,8 +9,7 @@ Model designed by  Doya, 2002
 Reimplemented by: Jianyong
 
 """
-import os.path
-import os, sys
+
 from environment_multitask_samejima import TextMaze, GraphicMaze
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,18 +19,23 @@ import ast
 import itertools as it
 import pandas as pd
 import math
-from model_arbiq_1 import MMBRL, Module
+# from model_MMBRL import MMBRL, Module
+from model_MMBRL_modular_reward import MMBRL, Module
 import time
+import os
+
 import configparser
 # from interaction import Interaction
 
-
 config = configparser.ConfigParser()
-config.read('../../app.ini')
+config.read('../configuration.ini')
 
 N_MODULE = config.getint('env','n_modules')
+# SIMULATIONS = config.getint('env','simulation_test')
 SIMULATIONS = config.getint('env','simulation')
 TRIAL = config.getint('env','trial')
+MULTITRIAL = config.getint('env','multitrial')
+PERIODTRIAL = config.getint('env','periodtrial')
 TRIAL_SAMEJIMA = config.getint('env','trial_samejima')
 
 EPISODES = 1000
@@ -56,14 +60,21 @@ MAZE_H = 7  # grid height
 MAZE_W = 7  # grid width
 x_range = range(0, MAZE_H)
 y_range = range(0, MAZE_W)
-all_locations = np.array(list(it.product(x_range, y_range)))*UNIT
-all_locations = all_locations.tolist()
+# all_locations = np.array(list(it.product(x_range, y_range)))*UNIT
+# all_locations = all_locations.tolist()
+
+
 prey_move_directions = ['ne', 'nw', 'se', 'sw']
 action_space = ['north', 'south', 'east', 'west', 'stay']
 
 step_list = {}
 simulation_list = []
 direction_dict = {}  # count the number of times the direction appears
+tasks = {0:['ne'],
+         1:['ne','nw'],
+         2:['ne','nw', 'se'],
+         3:['ne','nw', 'se', 'sw']
+         }
 
 np.random.seed(1)
 
@@ -75,19 +86,18 @@ def get_all_locations():
 def update():
     print("--- Interaction starts ---")
     start = time.time()
-    filename = "arbiq-task-samejima_modular_reward-m" + str(N_MODULE) + 's' + str(SIMULATIONS) + 't' + str(TRIAL_SAMEJIMA)
-    for simulation_i in range(SIMULATIONS):
+    filename = "samejima_modular_reward-m"+str(N_MODULE)+'s'+str(SIMULATIONS) +'mts'+ str(TRIAL_SAMEJIMA)
+    for simulation_i in range(SIMULATIONS):  # SIMULATIONS
         step_list_i = []
-        model = MMBRL(n_modules=N_MODULE, trial=TRIAL, method='softmax')
+        model = MMBRL(n_modules=N_MODULE, trial=TRIAL_SAMEJIMA, method='softmax')  #   softmax
         resp_method = 'samejima_modular_reward'
-        for trial in range(TRIAL):
-            model.watch_list = []
+        for trial in range(TRIAL_SAMEJIMA):  # MULTITRIAL_SAMEJIMA
             agent_original = [0, 0]
             step = 0
             reward_total = 0
             value_total = 0.0
-
             for prey_direction in prey_move_directions:
+                flag = 0
                 # ------------ environment initialization ------------ #
                 all_locations_i = get_all_locations()
                 if agent_original in all_locations_i:
@@ -103,14 +113,15 @@ def update():
                         value_total += module_i.responsibility * module_i.state_values[str(observation)]
 
                     observation_, reward, done = env.step_new(action)
-                    model.learn(str(observation), action, reward, str(observation_), done, resp_method)
+                    model.learn(str(observation), action, reward, str(observation_), resp_method, flag)
                     observation = observation_
                     step += 1
+                    flag += 1
                     reward_total += reward
                     if done:
                         agent_original = env.agent_current_position
                         break
-            print('simulation: %d/%d, [trial: %d/%d],  with %d steps.' % (simulation_i, SIMULATIONS, trial, TRIAL, step))
+            print('simulation: %d/%d, [trial: %d/%d],  with %d steps.' % (simulation_i, SIMULATIONS, trial, TRIAL_SAMEJIMA, step))
             # step_list_i.append(step)
 
             list_values = []
@@ -124,58 +135,10 @@ def update():
         model.mark += model.method+'-'+str(simulation_i)
         step_list[model.mark] = step_list_i
 
-        #------------------------ test_backup result ------------------------#
-        """
-        print('*-' * 30)
-        print(direction_dict)
-        observation = str([140, 140])
-        action = 4
-        key = observation + str(action)
-        for module_i in model.modules:
-            module_i.state_values['[0, 0]']
-            max_key = get_max_key(module_i.state_action_state_pro[key])
-            print(observation, action_space[action], module_i.task, max_key, module_i.state_action_state_pro[key][max_key]/sum(module_i.state_action_state_pro[key].values()))
-        print()
-        for module_i in model.modules:
-            print(module_i.state_action_state_pro[key])
-        # print(model.modules[1].q_table.index)
-        """
-        # -------------- test_backup function part ----------------#
-        """
-        step_list_i = []
-        model = MMBRL_test(n_modules=N_MODULE)
-        for trial in range(TRIAL):
-            # ------------ environment initialization ------------ #
-            agent_original = [0, 0]
-            if agent_original in all_locations:
-                all_locations.remove(agent_original)
-            # prey_direction = prey_move_directions[random.randint(0, 3)]
-            prey_direction = 'sw'
-            prey_original = all_locations[random.randint(0, len(all_locations) - 1)]
-            env = TextMaze(agent_original, prey_original, prey_direction, require='nn')
-            # ------------ interaction starts ------------ #
-            observation = env.reset()
-            step = 0
-            while True:
-                # is it necessary to select the module first?
-                action = model.choose_action(str(observation))
-                observation_, reward, done = env.step(action)
-                model.learn(str(observation), action, reward, str(observation_))
-                observation = observation_
-                step += 1
-                if done or (step >= MAX_STEP):
-                    break
-            print('The trial: %d,  with %d steps.' % (trial, step))
-            step_list_i.append(step)
-        model.mark += model.method
-        step_list[model.mark] = step_list_i
-        """
-        # ---------------------------------   show graphic  ---------------------------------#
-        # show_graphic(agent_original, prey_original, prey_direction, model)
-
     # show figures
     print('over')  # end of game
     # plot_step()
+
     period = time.time() - start
     if period > 3600:
         hour = period // 3600
@@ -189,7 +152,6 @@ def update():
 
     # plot_step_mean(filename)
     plot_step_multi_mean(filename)
-
 
     # for module_i in model.modules:
     #     show_pcolor_values(module_i.state_values)
@@ -402,12 +364,12 @@ def plot_step_mean(filename):
     filepath = os.path.join(currentpath, 'data')
     if not os.path.isdir(filepath):
         os.mkdir('data')
+
     means = []
     for model_mark in step_list.keys():
         step_list_i = step_list[model_mark]
         means.append(step_list_i)
     mean_value = np.mean(means, axis=0)
-    # print(mean_value)
     filename += '-'+time.strftime("%Y%m%d-%H%M%S", time.localtime())
     f = open("./data/"+filename+".txt", 'w')
     for ele in mean_value:

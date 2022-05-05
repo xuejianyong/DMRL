@@ -19,7 +19,6 @@ from collections import deque
 import itertools as it
 import math
 import tkinter as tk
-from interaction import Interaction
 
 
 UNIT = 70   # pixels
@@ -53,7 +52,7 @@ np.random.seed(1)
 
 
 class MMBRL:
-    def __init__(self, n_modules, trial, method='epsilon-greedy'):
+    def __init__(self, n_modules, trial, method='epsilon-greedy'):  # epsilon-greedy
         self.mark = 'MMBRL Doya 2002 '
         self.action_space = ['north', 'south', 'east', 'west', 'stay']
         self.n_actions = len(self.action_space)
@@ -74,33 +73,32 @@ class MMBRL:
         self.watch_list = []
         self.watch_limit = 10
 
-        self.state_action_architecture_count = {}
-        self.state_action_architecture_pro = {}
+        self.ac_state_action_count = {}
+        self.ac_state_action_pro = {}
+        self.reward_ac = {}
 
-        self.state_values_archiecture = {}
+        self.ac_state_action_state_pro = {}
+        self.ac_state_action_reward_value = {}
+        self.ac_state_value = {}
+
         self.memory = []
         self.modules_count = {}
         self.modules_pro = {}
         self.elements = []
         self.module_serials = []
 
-        self.reward_previous = 0.0
-        self.state_previous = None
-        self.action_previous = None
-
         for i in range(n_modules):
-            module_i = Module(str(i), self.actions, self.n_modules)
+            module_i = Module(i, self.actions, self.n_modules)
             self.module_serials.append(module_i.serial)
             self.modules.append(module_i)
             self.elements.append(i)
         self.selected_module = self.modules[0]
 
-        self.m_table = pd.DataFrame(columns=self.elements, dtype=np.float64)
+        self.ca_table = pd.DataFrame(columns=self.elements, dtype=np.float64)
 
-    """
     def module_selection(self, observation):
-        self.check_state_exist_in_module(observation)
-        state_module = self.m_table.loc[observation, :]
+        self.check_state_exist_in_ca(observation)
+        state_module = self.ca_table.loc[observation, :]
         if self.module_method == 'epsilon-greedy':
             if np.random.uniform() < self.epsilon:
                 module_index = np.random.choice(state_module[state_module == np.max(state_module)].index)
@@ -112,68 +110,62 @@ class MMBRL:
             pi = np.exp(self.beta * np.array(state_module)) / sum(np.exp(self.beta * np.array(state_module)))
             module_index = np.random.choice(self.actions, p=pi)
         return self.modules[module_index]
-    
-    
-    def check_state_exist_in_archi(self, state):
-        if state not in self.m_table.index:
-            self.m_table = self.m_table.append(
+
+    def check_state_exist_in_ca(self, state):
+        if state not in self.ca_table.index:
+            self.ca_table = self.ca_table.append(
                 pd.Series(
-                    [0]*len(self.elements),
-                    index=self.m_table.columns,
+                    [0.]*len(self.elements),
+                    index=self.ca_table.columns,
                     name=state,
                 )
             )
-    """
 
-    """
-    def update_state_actions_architecture(self, s, a):  # the action_list under the state of s
+
+    def ac_update_state_actions(self, s, a):  # the action_list under the state of s
         # { state : {action1: count1, action2:count2} }
-        if s not in self.state_action_architecture_count.keys():
-            self.state_action_architecture_count[s] = {}
-            self.state_action_architecture_count[s][a] = 1
+        if s not in self.ac_state_action_count.keys():
+            self.ac_state_action_count[s] = {}
+            self.ac_state_action_count[s][a] = 1
         else:
-            if a not in self.state_action_architecture_count[s].keys():
-                self.state_action_architecture_count[s][a] = 1
+            if a not in self.ac_state_action_count[s].keys():
+                self.ac_state_action_count[s][a] = 1
             else:
-                self.state_action_architecture_count[s][a] += 1
+                self.ac_state_action_count[s][a] += 1
 
         # compute the probabilities
         # { state : {action1: pro1, action2:pro2} }
         # initialize the state_action probability
-        if s not in self.state_action_architecture_pro.keys():
-            self.state_action_architecture_pro[s] = {}
-            self.state_action_architecture_pro[s][a] = 1.0
+        if s not in self.ac_state_action_pro.keys():
+            self.ac_state_action_pro[s] = {}
+            self.ac_state_action_pro[s][a] = 1.0
         else:
-            if a not in self.state_action_architecture_pro[s].keys():
-                self.state_action_architecture_pro[s][a] = 1.0
+            if a not in self.ac_state_action_pro[s].keys():
+                self.ac_state_action_pro[s][a] = 1.0
         # start to update state_action probability
-        action_count_dict = self.state_action_architecture_count[s]
+        action_count_dict = self.ac_state_action_count[s]
         count_sum = sum(action_count_dict.values())
         for action_i in action_count_dict.keys():
-            if action_i not in self.state_action_architecture_pro[s].keys():
-                print('warning!!!, action_i of state_action_architecture_count not exists in state_action_architecture_pro')
+            if action_i not in self.ac_state_action_pro[s].keys():
+                print('warning!!!, action_i of ac_state_action_count not exists in ac_state_action_pro')
             action_i_count = action_count_dict[action_i]
-            self.state_action_architecture_pro[s][action_i] = action_i_count / count_sum
-        """
+            self.ac_state_action_pro[s][action_i] = action_i_count / count_sum
 
     def choose_action(self, observation):
-        state_action = pd.Series([0.0] * len(self.actions), index=self.actions, name='composite_state_action_value')
-        if observation not in self.state_values_archiecture.keys():
-            self.state_values_archiecture[observation] = 0.0
+        self.selected_module = self.module_selection(observation)
+
+
+        # state_action = pd.Series([0.0] * len(self.actions), index=self.actions, name='composite_state_action_value')
+        if observation not in self.ac_state_value.keys():
+            self.ac_state_value[observation] = 0.0
         for module_i in self.modules:
             module_i.check_state_exist(observation)
             if observation not in module_i.state_values.keys():
                 module_i.state_values[observation] = 0.0
             if observation not in module_i.eligibility.keys():
                 module_i.eligibility[observation] = 0.0
-            state_action += module_i.responsibility * module_i.q_table.loc[observation, :]
 
-        """
-        single module selected for action selection
-        selected_module = self.selected_module
         state_action = self.selected_module.q_table.loc[observation, :]
-        """
-
         # action selection strategies
         if self.method == 'epsilon-greedy':
             if np.random.uniform() < self.epsilon:
@@ -192,15 +184,26 @@ class MMBRL:
 
     def learn(self, s, a, r, s_, done, resp_method):
         key = s + str(a)
-
         # ------------ parameters initialization ------------ #
-        if s_ not in self.state_values_archiecture.keys():
-            self.state_values_archiecture[s_] = 0.0
+        # initializing the AC
+        if s_ not in self.ac_state_value.keys():
+            self.ac_state_value[s_] = 0.0
+        self.check_state_exist_in_ca(s_)
+        if key not in self.ac_state_action_reward_value.keys():
+            self.ac_state_action_reward_value[key] = 0.0
+        if key not in self.ac_state_action_state_pro.keys():  # dynamic function in module i
+            self.ac_state_action_state_pro[key] = {}
+            self.ac_state_action_state_pro[key][s_] = np.random.uniform()
+        else:
+            if s_ not in self.ac_state_action_state_pro[key].keys():
+                self.ac_state_action_state_pro[key][s_] = np.random.uniform()
+
+        # initializing the modules
         for module_i in self.modules:
             module_i.check_state_exist(s_)
             if s_ not in module_i.state_values.keys():  # state value function in module i
                 module_i.state_values[s_] = 0.0
-            if s_ not in module_i.eligibility.keys():
+            if s_ not in module_i.eligibility.keys():   # eligibility traces
                 module_i.eligibility[s_] = 0.0
             if key not in module_i.state_action_reward_value.keys():  # reward function in module i
                 module_i.state_action_reward_value[key] = 0.0
@@ -212,6 +215,7 @@ class MMBRL:
                     module_i.state_action_state_pro[key][s_] = np.random.uniform()
 
         # ------------ responsibility calculation ------------ #
+        """
         if resp_method == 'original':
             dynamic_values = []
             for module_i in self.modules:
@@ -263,8 +267,9 @@ class MMBRL:
             for module_j, resp in zip(self.modules, dynamic_values):
                 module_j.responsibility = resp
                 module_j.responsibility_predictor = pow(resp, self.alpha)
-
+        """
         # ------------ module selection ------------ #
+        """
         if len(self.watch_list) % self.watch_limit == 0:
             module_responsibility = pd.Series([0.0] * self.n_modules, index=self.module_serials, name='module_responsibilities')
             watch_error_i = []
@@ -297,160 +302,68 @@ class MMBRL:
                 watch_error_i.append(predict_probability)
                 # watch_error_i.append(module_i.responsibility)
             self.watch_list.append(watch_error_i)
-
         """
-        module_i = self.selected_module
-        module_i.responsibility = self.lr
-        ------------ interaction enaction and comparison ------------ #
-        intended interaction vs enacted interaction
-        interaction = Interaction(s, a, s_, r, e=0.01)
-        """
-
         # ------------ module update ------------ #
-        state_error = r + self.gamma * self.state_values_archiecture[s_] - self.state_values_archiecture[s]  #?index
-        self.state_values_archiecture[s] += state_error * self.lr
 
+        # update state-reward function
+        state_error = r + self.gamma * self.ac_state_value[s_] - self.ac_state_value[s]  #?index
+        self.ac_state_value[s] += state_error * self.lr
 
-        module_i = self.selected_module
-        # for module_i in self.modules:
-
-        # update state prediction model
-        sum_probability_i = sum(module_i.state_action_state_pro[key].values())
-        predict_error_i = sum_probability_i - module_i.state_action_state_pro[key][s_]
-        # module_i.state_action_state_pro[key][s_] += module_i.responsibility * (1 - self.ksai * module_i.state_action_state_pro[key][s_])
-
-        for next_state_i in module_i.state_action_state_pro[key].keys():
-            if next_state_i == s_:
-                module_i.state_action_state_pro[key][next_state_i] += module_i.responsibility * predict_error_i * self.lr
-            else:
-                error_i = module_i.state_action_state_pro[key][next_state_i]
-                module_i.state_action_state_pro[key][next_state_i] -= module_i.responsibility * error_i * self.lr
-
-        """
-        for next_state_i in module_i.state_action_state_pro[key].keys():
-            if next_state_i == s_:
-                if module_i == self.selected_module:
-                    module_i.state_action_state_pro[key][next_state_i] += module_i.responsibility * predict_error_i * self.lr
-                else:
-                    module_i.state_action_state_pro[key][next_state_i] -= module_i.responsibility * predict_error_i * self.lr
-            else:
-                error_i = module_i.state_action_state_pro[key][next_state_i]
-                if module_i == self.selected_module:
-                    module_i.state_action_state_pro[key][next_state_i] -= module_i.responsibility * error_i * self.lr
-                else:
-                    module_i.state_action_state_pro[key][next_state_i] += module_i.responsibility * error_i * self.lr
-        """
-        """
-        # update dynamic model
-        for next_state_i in module_i.state_action_state_pro[key].keys():
-            c_j_x = 0
-            if next_state_i == s_:
-                c_j_x = 1
-            predict_error_i = module_i.state_action_state_pro[key][next_state_i] - c_j_x
-            if predict_error_i > 0:
-                module_i.state_action_state_pro[key][next_state_i] -= module_i.responsibility * predict_error_i
-            else:
-                module_i.state_action_state_pro[key][next_state_i] += module_i.responsibility * abs(predict_error_i)
-        """
+        # update state predictor
+        self.ac_state_action_state_pro[key][s_] += self.lr * (1 - self.ksai * self.ac_state_action_state_pro[key][s_])
 
         # update state_action reward model
-        reward_error = r - module_i.state_action_reward_value[key]
-        module_i.state_action_reward_value[key] += module_i.responsibility * reward_error * self.lr
+        ac_reward_error = r - self.ac_state_action_reward_value[key]
+        self.ac_state_action_reward_value[key] += ac_reward_error * self.lr
 
-        # update state_value function
-        module_i.eligibility[s] *= self.gamma * self.eta
-        module_i.eligibility[s] += 1
-        td_error = r + self.gamma * module_i.state_values[s_] - module_i.state_values[s]
-        # td_error = state_error
-        module_i.state_values[s] += module_i.responsibility * td_error * self.lr * module_i.eligibility[s]
+        # update state-module value in the ac_table: Q_ca(s_ca, m) from m and R_ca(s_ca)
+        self.ac_update_state_actions(s, a)
+        ac_action_count_dict = self.ac_state_action_count[s]  # get the action list in this state
+        for action_i in ac_action_count_dict.keys():
+            ac_state_action_str = s + str(action_i)
+            ac_latter_value = 0.0
+            ac_state_action_state_dict = self.ac_state_action_state_pro[ac_state_action_str]
+            ac_sum_probability = sum((ac_state_action_state_dict.values()))
+            for next_state_i in ac_state_action_state_dict.keys():
+                ac_latter_value += ac_state_action_state_dict[next_state_i]/ac_sum_probability * self.ac_state_value[next_state_i]
+            self.ca_table.loc[s, self.selected_module.serial] = self.ac_state_action_reward_value[ac_state_action_str] + self.gamma * ac_latter_value
 
-        # update state-action value in the q_table
-        module_i.update_state_actions(s, a)
-        action_count_dict = module_i.state_action_count[s]  # get the action list in this state
-        for action_i in action_count_dict.keys():
-            state_action_str = s + str(action_i)
-            latter_value = 0.0
-            state_action_state_dict = module_i.state_action_state_pro[state_action_str]
-            sum_probability = sum((state_action_state_dict.values()))
-            for next_state_i in state_action_state_dict.keys():
-                latter_value += state_action_state_dict[next_state_i]/sum_probability * module_i.state_values[next_state_i]
-            module_i.q_table.loc[s, action_i] = module_i.state_action_reward_value[state_action_str] + self.gamma * latter_value
+        # module_i = self.selected_module
+        for module_i in self.modules:
 
-
-        # get responsibility value, then to update the values
-        """
-        for module_index in range(self.n_modules):
-            module_i = self.modules[module_index]
-            module_i.responsibility = dynamic_values[module_index]
-            # module_i.responsibility = self.lr
-
-            # update dynamic model
+            # update state prediction model
+            sum_probability_i = sum(module_i.state_action_state_pro[key].values())
+            predict_error_i = sum_probability_i - module_i.state_action_state_pro[key][s_]
+            # module_i.state_action_state_pro[key][s_] += module_i.responsibility * (1 - self.ksai * module_i.state_action_state_pro[key][s_])
             for next_state_i in module_i.state_action_state_pro[key].keys():
-                c_j_x = 0
                 if next_state_i == s_:
-                    c_j_x = 1
-                predict_error_i = module_i.state_action_state_pro[key][next_state_i] - c_j_x
-                if predict_error_i > 0:
-                    module_i.state_action_state_pro[key][next_state_i] -= module_i.responsibility * predict_error_i
+                    module_i.state_action_state_pro[key][next_state_i] += module_i.responsibility * predict_error_i * self.lr
                 else:
-                    module_i.state_action_state_pro[key][next_state_i] += module_i.responsibility * abs(predict_error_i)
+                    error_i = module_i.state_action_state_pro[key][next_state_i]
+                    module_i.state_action_state_pro[key][next_state_i] -= module_i.responsibility * error_i * self.lr
 
-            # update reward model
-            if key not in module_i.state_action_reward_value.keys():
-                module_i.state_action_reward_value[key] = 0.0
+            # update state_action reward model
             reward_error = r - module_i.state_action_reward_value[key]
-            module_i.state_action_reward_value[key] += module_i.responsibility * reward_error
+            module_i.state_action_reward_value[key] += module_i.responsibility * reward_error * self.lr
 
-            # update state value function
-            if s_ not in module_i.state_values.keys():
-                module_i.state_values[s_] = 0.0
+            # update state_value function
+            module_i.eligibility[s] *= self.gamma * self.eta
+            module_i.eligibility[s] += 1
             td_error = r + self.gamma * module_i.state_values[s_] - module_i.state_values[s]
-            module_i.state_values[s] += module_i.responsibility * td_error
+            # td_error = state_error
+            module_i.state_values[s] += module_i.responsibility * td_error * self.lr # * module_i.eligibility[s]
 
             # update state-action value in the q_table
             module_i.update_state_actions(s, a)
-            action_count_dict = module_i.state_action_count[s]
+            action_count_dict = module_i.state_action_count[s]  # get the action list in this state
             for action_i in action_count_dict.keys():
                 state_action_str = s + str(action_i)
                 latter_value = 0.0
                 state_action_state_dict = module_i.state_action_state_pro[state_action_str]
+                sum_probability = sum((state_action_state_dict.values()))
                 for next_state_i in state_action_state_dict.keys():
-                    latter_value += state_action_state_dict[next_state_i] * module_i.state_values[next_state_i]  # p*v(s')
-                module_i.q_table.loc[s, action_i] = module_i.state_action_reward_value[key] + self.gamma * latter_value
-        """
-        """
-        for module_i in self.modules:
-            module_i.check_state_exist(s_)
-            module_i.update_dicts(s, a, r, s_)
-            # update dynamic model, learning in state prediction model
-            for state_i in all_locations:
-                for action_i in self.actions:
-                    state_action_str = state_i + str(action_i)
-                    for next_state_i in all_locations:
-                        c_j_x = 0
-                        if next_state_i == s_:
-                            c_j_x = 1
-                        predict_error_i = module_i.responsibility * (module_i.state_action_state_pro[state_action_str][next_state_i] - c_j_x)
-                        if predict_error_i > 0:
-                            module_i.state_action_state_pro[state_action_str][next_state_i] -= self.lr * predict_error_i
-                        else:
-                            module_i.state_action_state_pro[state_action_str][next_state_i] += self.lr * abs(predict_error_i)
-
-            # reinforcement learning controller
-            reward_error = r - module_i.state_action_reward[key]
-            module_i.state_action_reward[key] += self.lr * reward_error
-
-            # reward model
-            td_error = module_i.responsibility * (r + self.gamma * module_i.state_values[s_] - module_i.state_values[s])
-            module_i.state_values[s] += self.lr * td_error
-
-            # update state-action values in the q_table
-            latter_value = 0.0
-            state_action_state_dict = module_i.state_action_state_pro[key]
-            for next_state_i in state_action_state_dict.keys():
-                latter_value += state_action_state_dict[next_state_i] * module_i.state_values[next_state_i]  # p*v(s')
-            module_i.q_table.loc[s, a] = module_i.state_action_reward[key] + self.gamma * latter_value
-            """
+                    latter_value += state_action_state_dict[next_state_i]/sum_probability * module_i.state_values[next_state_i]
+                module_i.q_table.loc[s, action_i] = module_i.state_action_reward_value[state_action_str] + self.gamma * latter_value
 
     def show_modules(self):
         popWindow = tk.Tk()

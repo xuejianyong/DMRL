@@ -25,7 +25,7 @@ import itertools as it
 import pandas as pd
 import math
 # from model_MMBRL import MMBRL, Module
-from model_MMBRL_concurrent_4 import MMBRL, Module
+from model_MMBRL import MMBRL, Module
 import time
 import os
 
@@ -37,7 +37,7 @@ config = configparser.ConfigParser()
 # config.read(filepath)
 # print(os.getcwd())
 # print(os.path.join(os.getcwd(), 'app.ini'))
-config.read('../../app.ini')
+config.read('../configuration.ini')
 N_MODULE = config.getint('env','n_modules')
 SIMULATIONS = config.getint('env','simulation')
 TRIAL = config.getint('env','trial')
